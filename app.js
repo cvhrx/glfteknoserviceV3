@@ -1,4 +1,4 @@
-// app.js — versione completa con le 5 patch
+// app.js with two fixes: day picker loads saved data, export PDF includes -1 client when single client
 
 const $ = s => document.querySelector(s);
 const pad2 = n => String(n).padStart(2,'0');
@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
       await auth.signInWithEmailAndPassword(email, pass);
     }catch(e){ console.error('LOGIN ERROR', e); alert(e.message||e.code); }
   };
-
   $('#btnDoRegister').onclick = async ()=>{
     try{
       const email=$('#regEmail').value.trim(); const pass=$('#regPass').value;
@@ -124,7 +123,14 @@ function getPayload(){
   const total = (seg1+seg2);
   const ord = Math.min(8, total);
   const str = Math.max(0, total-8);
-  const clientIndex = Math.max(-1, (document.getElementById('clientSelect').selectedIndex||0) - 1);
+
+  let clientIndex = -1;
+  if(state.clients.length >= 2){
+    clientIndex = Math.max(-1, (document.getElementById('clientSelect').selectedIndex||0) - 1);
+  }else if(state.clients.length === 1){
+    clientIndex = 0; // unico cliente auto-assegnato
+  }
+
   return {
     in1, out1, in2, out2,
     ordH: Number(ord.toFixed(2)),
@@ -145,7 +151,11 @@ async function initApp(){
   const dp = document.getElementById('dayPicker');
   const today = new Date().toISOString().slice(0,10);
   dp.value = dp.value || today;
-  dp.addEventListener('change', e=> loadMonth(e.target.value.slice(0,7)));
+  dp.addEventListener('change', e=>{
+    const iso = e.target.value;
+    loadDay(iso);               // carica i dati nel form
+    loadMonth(iso.slice(0,7));  // aggiorna elenco e calendario
+  });
 
   await loadDay(dp.value);
   await loadMonth(dp.value.slice(0,7));
@@ -173,8 +183,13 @@ function renderClients(){
   const sel  = document.getElementById('clientSelect');
   const sel2 = document.getElementById('cliSelect');
   const opts = (state.clients||[]).map((c,i)=>'<option value="'+i+'">'+(c.ragione||('Cliente '+(i+1)))+'</option>').join('');
-  if(sel){ sel.innerHTML = '<option>—</option>'+opts; }
-  if(sel2){ sel2.innerHTML = opts; }
+
+  if(sel){
+    sel.innerHTML = '<option>—</option>'+opts;
+    const field = sel.closest('.field');
+    if(field) field.style.display = (state.clients.length > 1 ? '' : 'none');
+  }
+  if(sel2) sel2.innerHTML = opts;
 }
 
 function addClient(){
@@ -238,7 +253,8 @@ async function loadDay(d){
     document.getElementById('note').value = v.note||'';
     document.getElementById('chipTrasf').classList.toggle('active', !!v.trasf);
     document.getElementById('chipPern').classList.toggle('active', !!v.pern);
-    document.getElementById('clientSelect').selectedIndex = (v.clientIndex??-1)+1;
+    const idx = (v.clientIndex==null?-1:v.clientIndex);
+    document.getElementById('clientSelect').selectedIndex = (idx<0? -1: idx) + 1;
   }else{
     document.getElementById('km').value=0; document.getElementById('note').value='';
     document.getElementById('chipTrasf').classList.remove('active');
@@ -373,9 +389,13 @@ async function exportPdf(){
     alert('Errore lettura dati per PDF: ' + (e.message||e.code));
   }
 
-  const days = Object.values(map)
-    .filter(v => clientIndex < 0 || v.clientIndex === clientIndex)
-    .sort((a,b)=>a.id.localeCompare(b.id));
+  // Normalizza: se ho un solo cliente, i -1 diventano 0
+  Object.values(map).forEach(v=>{
+    if(state.clients.length === 1 && (v.clientIndex == null || v.clientIndex < 0)) v.clientIndex = 0;
+  });
+
+  const allDays = Object.values(map).sort((a,b)=>a.id.localeCompare(b.id));
+  const days = allDays.filter(v => clientIndex < 0 || v.clientIndex === clientIndex);
 
   const rows = days.map(v => [
     v.id.slice(-2),
@@ -439,10 +459,6 @@ async function exportPdf(){
         10:{cellWidth:'auto'}
       }
     });
-  }else{
-    doc.setFontSize(11);
-    let yPos = startYTitle + 26;
-    rows.forEach(r => { doc.text(r.join(' | '), 20, yPos); yPos+=16; if(yPos>800){ doc.addPage(); yPos=40; } });
   }
 
   // riepilogo su una sola pagina
