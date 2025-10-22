@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rapportini</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ff0a09">
+  <link rel="icon" href="assets/logo.png">
+  <link rel="apple-touch-icon" href="assets/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+  <header class="app-header"><div class="brand"><img src="assets/logo.png" class="logo" alt=""></div></header>
+  <main class="container">
+    <section id="authCard" class="card">
+      <h1>Accesso</h1>
+      <div class="field"><label>Email</label><input id="loginEmail" type="email"></div>
+      <div class="field"><label>Password</label><input id="loginPass" type="password"></div>
+      <div class="row gap">
+        <button type="button" class="btn primary" id="btnLogin">Entra</button>
+        <button type="button" class="btn ghost" id="btnShowRegister">Registra</button>
+      </div>
+      <div id="registerBox" class="register hidden">
+        <h2>Registrazione</h2>
+        <div class="row two">
+          <div class="field"><label>Ragione sociale</label><input id="regRagione"></div>
+          <div class="field"><label>P.IVA/CF</label><input id="regPiva"></div>
+        </div>
+        <div class="row two">
+          <div class="field"><label>Indirizzo</label><input id="regIndirizzo"></div>
+          <div class="field"><label>Telefono</label><input id="regTelefono"></div>
+        </div>
+        <div class="row two">
+          <div class="field"><label>Email aziendale</label><input id="regEmailAzi"></div>
+          <div class="field"><label>SDI/PEC</label><input id="regSdi"></div>
+        </div>
+        <div class="row two">
+          <div class="field"><label>Email accesso</label><input id="regEmail" type="email"></div>
+          <div class="field"><label>Password</label><input id="regPass" type="password"></div>
+        </div>
+        <div class="row gap">
+          <button type="button" class="btn primary" id="btnDoRegister">Conferma registrazione</button>
+          <button type="button" class="btn ghost" id="btnCancelRegister">Annulla</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="app" class="hidden">
+      <div class="card row two">
+        <div class="field full"><label>Giorno</label><input type="date" id="dayPicker"></div>
+      </div>
+
+      <section class="card" id="compileCard">
+        <h2>Compila giornata</h2>
+        <div class="grid-2">
+          <div class="row two tight">
+            <div class="field"><label>Ingresso 1</label><div class="timebox"><select id="in1h"></select><select id="in1m"></select></div></div>
+            <div class="field"><label>Uscita 1</label><div class="timebox"><select id="out1h"></select><select id="out1m"></select></div></div>
+          </div>
+          <div class="row two tight">
+            <div class="field"><label>Ingresso 2</label><div class="timebox"><select id="in2h"></select><select id="in2m"></select></div></div>
+            <div class="field"><label>Uscita 2</label><div class="timebox"><select id="out2h"></select><select id="out2m"></select></div></div>
+          </div>
+        </div>
+        <div class="row two">
+          <div class="field"><label>KM totali</label><input id="km" inputmode="numeric" value="0"></div>
+          <div class="field"><label>Cliente</label><select id="clientSelect"><option>—</option></select></div>
+        </div>
+        <div class="row chips">
+          <button type="button" id="chipTrasf" class="chip">Trasferta</button>
+          <button type="button" id="chipPern" class="chip">Pernotto</button>
+        </div>
+        <div class="field"><label>Note</label><textarea id="note" rows="3" placeholder="Cliente / sede / attività"></textarea></div>
+        <div class="row gap">
+          <button type="button" class="btn primary" id="btnSaveDay">Salva giornata</button>
+          <button type="button" class="btn ghost" id="btnExportPdf">Esporta PDF</button>
+          <button type="button" class="btn settings" id="btnSettings" title="Impostazioni">⚙️</button>
+        </div>
+      </section>
+
+      <div class="card row tabs">
+        <button id="tabList" class="chip active">Elenco</button>
+        <button id="tabCal" class="chip">Calendario</button>
+        <span id="monthLabel" class="muted month"></span>
+      </div>
+      <section id="listView" class="card"></section>
+      <section id="calView" class="card hidden"><div id="calGrid" class="cal-grid"></div></section>
+    </section>
+  </main>
+
+  <dialog id="settingsDlg">
+    <div class="dlg-head"><h3>Impostazioni</h3><button id="closeSettings" class="icon">✕</button></div>
+    <div class="dlg-tabs"><button id="tabCli" class="chip">Clienti</button><button id="tabTar" class="chip active">Tariffe</button></div>
+    <div id="paneTariffe">
+      <div class="row two">
+        <div class="field"><label>€ / h ordinarie</label><input id="tarOrd" inputmode="decimal" value="12"></div>
+        <div class="field"><label>€ / h straordinarie</label><input id="tarStr" inputmode="decimal" value="25"></div>
+      </div>
+      <div class="row two">
+        <div class="field"><label>€ / km</label><input id="tarKm" inputmode="decimal" value="0.40"></div>
+        <div class="field"><label>€ Trasferta (gg)</label><input id="tarTrasf" inputmode="decimal" value="50"></div>
+      </div>
+      <div class="row"><div class="field"><label>€ Pernotto (nt)</label><input id="tarPern" inputmode="decimal" value="80"></div></div>
+      <div class="row right"><button type="button" class="btn primary" id="btnSaveTar">Salva tariffe</button></div>
+    </div>
+    <div id="paneClienti" class="hidden">
+      <div class="row two"><div class="field"><label>Ragione Sociale</label><input id="cliRagione"></div><div class="field"><label>P.IVA / CF</label><input id="cliPiva"></div></div>
+      <div class="row two"><div class="field"><label>Email</label><input id="cliEmail"></div><div class="field"><label>Telefono</label><input id="cliTel"></div></div>
+      <div class="row two"><div class="field"><label>Indirizzo</label><input id="cliIndirizzo"></div><div class="field"><label>Codice SDI</label><input id="cliSdi"></div></div>
+      <div class="row gap"><button type="button" class="btn primary" id="btnAddCli">Aggiungi cliente</button><button type="button" class="btn ghost" id="btnDelCli">Elimina selezionato</button></div>
+      <div class="field"><label>Seleziona cliente</label><select id="cliSelect"></select></div>
+      <div class="row right"><button type="button" class="btn primary" id="btnSaveCli">Salva clienti</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="dayDlg">
+    <div class="dlg-head"><h3>Dettaglio giornata</h3><button id="closeDayDlg" class="icon">✕</button></div>
+    <div id="dayDetail"></div>
+  </dialog>
+
+  <script>
+    if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker_v4.js'));}
+  </script>
+  <script src="firebase.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

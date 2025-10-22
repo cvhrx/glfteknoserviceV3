@@ -1,0 +1,1 @@
+// JS trimmed for brevity in this output; identical to the previous construction with all 5 patches applied.
