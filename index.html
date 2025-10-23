@@ -120,26 +120,26 @@
   </dialog>
 
   <dialog id="dayDlg">
-    <dialog id="pdfDlg">
-  <div class="dlg-head">
-    <h3>Esporta PDF</h3>
-    <button id="pdfCancel" class="icon" type="button">✕</button>
-  </div>
-  <div class="field">
-    <label>Cliente</label>
-    <select id="pdfClient"></select>
-  </div>
-  <div class="row right">
-    <button id="pdfOk" class="btn primary" type="button">Esporta</button>
-  </div>
-</dialog>
     <div class="dlg-head"><h3>Dettaglio giornata</h3><button id="closeDayDlg" class="icon">✕</button></div>
     <div id="dayDetail"></div>
   </dialog>
 
-  <script>
-    if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker_v4.js'));}
-  </script>
+  <!-- Dialog export PDF con menu a tendina -->
+  <dialog id="pdfDlg">
+    <div class="dlg-head">
+      <h3>Esporta PDF</h3>
+      <button id="pdfCancel" class="icon" type="button">✕</button>
+    </div>
+    <div class="field">
+      <label>Cliente</label>
+      <select id="pdfClient"></select>
+    </div>
+    <div class="row right">
+      <button id="pdfOk" class="btn primary" type="button">Esporta</button>
+    </div>
+  </dialog>
+
+  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker_v4.js'));}</script>
   <script src="firebase.js"></script>
   <script src="app.js"></script>
 </body>
