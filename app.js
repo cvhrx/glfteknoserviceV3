@@ -125,28 +125,28 @@ function timeDiff(a,b){
 }
 
 function getPayload(){
-  const h = (sel) => (document.querySelector(sel).value || '00');
-  const mk = (hh,mm) => (hh + ':' + mm);
+  const h=(sel)=> (document.querySelector(sel).value || '00');
+  const mk = (hh,mm)=> (hh+':'+mm);
+  const in1 = mk(h('#in1h'),h('#in1m'));
+  const out1= mk(h('#out1h'),h('#out1m'));
+  const in2 = mk(h('#in2h'),h('#in2m'));
+  const out2= mk(h('#out2h'),h('#out2m'));
 
-  const in1  = mk(h('#in1h'), h('#in1m'));
-  const out1 = mk(h('#out1h'), h('#out1m'));
-  const in2  = mk(h('#in2h'), h('#in2m'));
-  const out2 = mk(h('#out2h'), h('#out2m'));
+  const seg1 = timeDiff(in1,out1);
+  const seg2 = timeDiff(in2,out2);
+  const total = (seg1+seg2);
 
-  const seg1  = timeDiff(in1, out1);
-  const seg2  = timeDiff(in2, out2);
-  const total = seg1 + seg2;
-
+  // ✅ NUOVA LOGICA FESTIVO
   const isFestivo = document.getElementById('chipFestivo')?.classList.contains('active');
 
   let ord, str, strFest;
   if (isFestivo) {
-    // Festivo ON: tutte le ore diventano straord. festive
+    // Festivo ON => tutte le ore come straordinario festivo
     ord = 0;
     str = 0;
     strFest = total;
   } else {
-    // Feriale: 8 ordinarie + extra straordinarie
+    // Feriale => 8 ord + extra in straordinario
     ord = Math.min(8, total);
     const extra = Math.max(0, total - 8);
     str = extra;
@@ -154,23 +154,23 @@ function getPayload(){
   }
 
   let clientIndex = -1;
-  if (state.clients.length >= 2) {
-    clientIndex = Math.max(-1, (document.getElementById('clientSelect')?.selectedIndex || 0) - 1);
-  } else if (state.clients.length === 1) {
+  if(state.clients.length >= 2){
+    clientIndex = Math.max(-1, (document.getElementById('clientSelect').selectedIndex||0) - 1);
+  }else if(state.clients.length === 1){
     clientIndex = 0;
   }
 
   return {
     in1, out1, in2, out2,
-    ordH:     Number(ord.toFixed(2)),
-    strH:     Number(str.toFixed(2)),
+    ordH: Number(ord.toFixed(2)),
+    strH: Number(str.toFixed(2)),
     strFestH: Number(strFest.toFixed(2)),
-    totalH:   Number(total.toFixed(2)),
-    km:   parseFloat(document.getElementById('km').value || '0') || 0,
+    totalH: Number(total.toFixed(2)),
+    km: parseFloat(document.getElementById('km').value||'0')||0,
     trasf: document.getElementById('chipTrasf').classList.contains('active'),
     pern:  document.getElementById('chipPern').classList.contains('active'),
     festivo: !!isFestivo,
-    note:  document.getElementById('note').value || '',
+    note: document.getElementById('note').value||'',
     clientIndex
   };
 }
