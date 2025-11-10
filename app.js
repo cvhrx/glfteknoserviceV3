@@ -2,7 +2,8 @@ const $ = s => document.querySelector(s);
 const pad2 = n => String(n).padStart(2,'0');
 const fmtIT = iso => { const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
 
-const state = { user:null, company:{}, clients:[], tariffs:{ord:12,str:25,km:0.4,trasf:50,pern:80} };
+// + strFest default (35 €/h)
+const state = { user:null, company:{}, clients:[], tariffs:{ord:12,str:25,strFest:35,km:0.4,trasf:50,pern:80} };
 
 const auth = firebase.auth();
 const db   = firebase.firestore();
@@ -54,6 +55,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   $('#chipTrasf').onclick = ()=> $('#chipTrasf').classList.toggle('active');
   $('#chipPern').onclick  = ()=> $('#chipPern').classList.toggle('active');
+  // chip Festivo
+  const fest = document.getElementById('chipFestivo');
+  if(fest) fest.onclick = ()=> fest.classList.toggle('active');
+
   $('#btnSettings').onclick = ()=> $('#settingsDlg').showModal();
   $('#closeSettings').onclick = ()=> $('#settingsDlg').close();
   $('#tabTar').onclick = ()=> togglePane('Tar');
@@ -63,7 +68,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#btnDelCli').onclick = delClient;
   $('#btnSaveCli').onclick = saveClients;
   $('#btnSaveDay').onclick = saveDay;
-  $('#btnExportPdf').onclick = openPdfDialog; // dialog con tendina
+  $('#btnExportPdf').onclick = openPdfDialog;
   $('#tabList').onclick = ()=> switchView('list');
   $('#tabCal').onclick  = ()=> switchView('cal');
   $('#closeDayDlg').onclick = ()=> $('#dayDlg').close();
@@ -101,7 +106,7 @@ function switchView(which){
 
 function buildTimeSelectors(){
   const hours = Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
-  const mins  = ['00','30'];
+  const mins  = ['00','30']; // 0-30
   [['#in1h','#in1m'],['#out1h','#out1m'],['#in2h','#in2m'],['#out2h','#out2m']].forEach(([hSel,mSel])=>{
     document.querySelector(hSel).innerHTML =
       '<option value="" disabled selected>ore</option>' +
@@ -130,7 +135,12 @@ function getPayload(){
   const seg2 = timeDiff(in2,out2);
   const total = (seg1+seg2);
   const ord = Math.min(8, total);
-  const str = Math.max(0, total-8);
+  const extra = Math.max(0, total-8);
+
+  // Festivo: extra -> strFestH
+  const isFestivo = document.getElementById('chipFestivo')?.classList.contains('active');
+  const strFest = isFestivo ? extra : 0;
+  const str     = isFestivo ? 0     : extra;
 
   let clientIndex = -1;
   if(state.clients.length >= 2){
@@ -143,10 +153,12 @@ function getPayload(){
     in1, out1, in2, out2,
     ordH: Number(ord.toFixed(2)),
     strH: Number(str.toFixed(2)),
+    strFestH: Number(strFest.toFixed(2)),
     totalH: Number(total.toFixed(2)),
     km: parseFloat(document.getElementById('km').value||'0')||0,
     trasf: document.getElementById('chipTrasf').classList.contains('active'),
     pern:  document.getElementById('chipPern').classList.contains('active'),
+    festivo: !!isFestivo,
     note: document.getElementById('note').value||'',
     clientIndex
   };
@@ -174,10 +186,11 @@ async function loadClientsAndTariffs(){
   const ut = await uref.get();
   if(ut.exists){
     const data = ut.data();
-    state.tariffs = data.tariffs || state.tariffs;
+    state.tariffs = Object.assign({ord:12,str:25,strFest:35,km:0.4,trasf:50,pern:80}, data.tariffs||{});
     state.company = data.company || {};
     document.getElementById('tarOrd').value = state.tariffs.ord;
     document.getElementById('tarStr').value = state.tariffs.str;
+    if(document.getElementById('tarStrFest')) document.getElementById('tarStrFest').value = state.tariffs.strFest ?? 35;
     document.getElementById('tarKm').value  = state.tariffs.km;
     document.getElementById('tarTrasf').value = state.tariffs.trasf;
     document.getElementById('tarPern').value  = state.tariffs.pern;
@@ -260,12 +273,14 @@ async function loadDay(d){
     document.getElementById('note').value = v.note||'';
     document.getElementById('chipTrasf').classList.toggle('active', !!v.trasf);
     document.getElementById('chipPern').classList.toggle('active', !!v.pern);
+    document.getElementById('chipFestivo')?.classList.toggle('active', !!v.festivo);
     const idx = (v.clientIndex==null?-1:v.clientIndex);
     document.getElementById('clientSelect').selectedIndex = (idx<0? -1: idx) + 1;
   }else{
     document.getElementById('km').value=0; document.getElementById('note').value='';
     document.getElementById('chipTrasf').classList.remove('active');
     document.getElementById('chipPern').classList.remove('active');
+    document.getElementById('chipFestivo')?.classList.remove('active');
     document.getElementById('clientSelect').selectedIndex = 0;
   }
 }
@@ -281,7 +296,7 @@ async function loadMonth(yyyyMM){
   const daysMap = {};
   for(let d=1; d<=daysInMonth; d++){
     const id = `${y}-${pad2(m)}-${pad2(d)}`;
-    daysMap[id] = { id, in1:'', out1:'', in2:'', out2:'', ordH:0, strH:0, totalH:0, km:0, note:'', trasf:false, pern:false, clientIndex:-1 };
+    daysMap[id] = { id, in1:'', out1:'', in2:'', out2:'', ordH:0, strH:0, strFestH:0, totalH:0, km:0, note:'', trasf:false, pern:false, festivo:false, clientIndex:-1 };
   }
   try{
     const snap = await db.collection('users').doc(state.user.uid).collection('days')
@@ -301,13 +316,14 @@ async function loadMonth(yyyyMM){
       row.className='list-item';
       const compiled = (v.totalH>0) || v.in1 || v.out1 || v.in2 || v.out2;
       if(compiled) row.classList.add('compiled');
+      const strTot = (v.strH||0)+(v.strFestH||0);
       row.innerHTML = `<div><strong>${fmtIT(v.id)}</strong> · ${cli}</div>
-        <div><span class="badge ok">${(v.ordH||0).toFixed(1)}h</span> <span class="badge warn">${(v.strH||0).toFixed(1)}h</span></div>`;
+        <div><span class="badge ok">${(v.ordH||0).toFixed(1)}h</span> <span class="badge warn">${strTot.toFixed(1)}h</span></div>`;
       row.onclick = ()=>{
         const exp = document.createElement('div');
         exp.className='card';
         exp.innerHTML = `<p>In1: ${v.in1||'-'} Out1: ${v.out1||'-'} · In2: ${v.in2||'-'} Out2: ${v.out2||'-'} · KM: ${v.km||0}</p>
-                         <p>Trasferta: ${v.trasf?'Sì':'No'} · Pernotto: ${v.pern?'Sì':'No'}</p>
+                         <p>Trasferta: ${v.trasf?'Sì':'No'} · Pernotto: ${v.pern?'Sì':'No'} · Festivo: ${v.festivo?'Sì':'No'}</p>
                          <p>Note: ${v.note||''}</p>`;
         if(row.nextSibling && row.nextSibling.className==='card') row.parentNode.removeChild(row.nextSibling);
         else row.parentNode.insertBefore(exp, row.nextSibling);
@@ -324,11 +340,12 @@ async function loadMonth(yyyyMM){
       const dNum = Number(v.id.slice(-2));
       const cell=document.createElement('div'); cell.className='day'; cell.dataset.date=v.id;
       const compiled = (v.totalH>0) || v.in1 || v.out1 || v.in2 || v.out2; if(compiled) cell.classList.add('compiled');
+      const strTot=(v.strH||0)+(v.strFestH||0);
       cell.innerHTML = `<strong>${dNum}</strong><div class="bar"></div>
-        <div><span class="badge ok">${(v.ordH||0).toFixed(1)}h</span> <span class="badge warn">${(v.strH||0).toFixed(1)}h</span></div>`;
+        <div><span class="badge ok">${(v.ordH||0).toFixed(1)}h</span> <span class="badge warn">${strTot.toFixed(1)}h</span></div>`;
       const bar = cell.querySelector('.bar');
       const s1=document.createElement('span'); s1.className='seg ord'; s1.style.width=Math.min(100,Math.round((v.ordH||0)/8*100))+'%';
-      const s2=document.createElement('span'); s2.className='seg str'; s2.style.width=Math.min(100,Math.round((v.strH||0)/8*100))+'%';
+      const s2=document.createElement('span'); s2.className='seg str'; s2.style.width=Math.min(100,Math.round(strTot/8*100))+'%';
       bar.appendChild(s1); bar.appendChild(s2);
       cell.onclick = ()=> showDayDetail(v);
       grid.appendChild(cell);
@@ -338,11 +355,12 @@ async function loadMonth(yyyyMM){
 
 function showDayDetail(v){
   const cli = (state.clients||[])[v.clientIndex]?.ragione || '—';
+  const strTot = (v.strH||0)+(v.strFestH||0);
   document.getElementById('dayDetail').innerHTML = `<p><strong>${fmtIT(v.id)}</strong></p>
     <p>Cliente: ${cli}</p>
     <p>In1: ${v.in1||'-'}  Out1: ${v.out1||'-'}<br>In2: ${v.in2||'-'}  Out2: ${v.out2||'-'}</p>
-    <p>Ord: ${(v.ordH||0).toFixed(2)}h  Str: ${(v.strH||0).toFixed(2)}h  KM: ${v.km||0}</p>
-    <p>Trasferta: ${v.trasf?'Sì':'No'}  Pernotto: ${v.pern?'Sì':'No'}</p>
+    <p>Ord: ${(v.ordH||0).toFixed(2)}h  Str: ${strTot.toFixed(2)}h  KM: ${v.km||0}</p>
+    <p>Trasferta: ${v.trasf?'Sì':'No'}  Pernotto: ${v.pern?'Sì':'No'}  Festivo: ${v.festivo?'Sì':'No'}</p>
     <p>Note: ${v.note||''}</p>`;
   document.getElementById('dayDlg').showModal();
 }
@@ -351,6 +369,7 @@ async function saveTariffs(){
   state.tariffs = {
     ord: parseFloat(document.getElementById('tarOrd').value||'12')||12,
     str: parseFloat(document.getElementById('tarStr').value||'25')||25,
+    strFest: parseFloat(document.getElementById('tarStrFest')?.value||'35')||35,
     km: parseFloat(document.getElementById('tarKm').value||'0.4')||0.4,
     trasf: parseFloat(document.getElementById('tarTrasf').value||'50')||50,
     pern: parseFloat(document.getElementById('tarPern').value||'80')||80
@@ -392,7 +411,7 @@ async function exportPdf(clientIndex = undefined){
   const map = {};
   for(let d=1; d<=last; d++){
     const id = `${yyyyMM}-${pad2(d)}`;
-    map[id] = { id, in1:'', out1:'', in2:'', out2:'', ordH:0, strH:0, totalH:0, km:0, note:'', trasf:false, pern:false, clientIndex:-1 };
+    map[id] = { id, in1:'', out1:'', in2:'', out2:'', ordH:0, strH:0, strFestH:0, totalH:0, km:0, note:'', trasf:false, pern:false, festivo:false, clientIndex:-1 };
   }
   try{
     const snap = await db.collection('users').doc(state.user.uid).collection('days')
@@ -404,7 +423,7 @@ async function exportPdf(clientIndex = undefined){
     alert('Errore lettura dati per PDF: ' + (e.message||e.code));
   }
 
-  // Se unico cliente, giorni senza clientIndex vengono assegnati a 0
+  // se unico cliente, assegna i -1
   Object.values(map).forEach(v=>{
     if(state.clients.length === 1 && (v.clientIndex == null || v.clientIndex < 0)) v.clientIndex = 0;
   });
@@ -415,14 +434,14 @@ async function exportPdf(clientIndex = undefined){
   const rows = days.map(v => [
     v.id.slice(-2),
     v.in1||'-', v.out1||'-', v.in2||'-', v.out2||'-',
-    (v.ordH||0).toFixed(2), (v.strH||0).toFixed(2),
+    (v.ordH||0).toFixed(2), (v.strH||0).toFixed(2), (v.strFestH||0).toFixed(2),
     v.trasf?'SI':'', v.pern?'SI':'', String(v.km||0),
     v.note?String(v.note):''
   ]);
 
-  const t = state.tariffs||{ord:0,str:0,km:0,trasf:0,pern:0};
-  let totOrd=0, totStr=0, totKm=0, nTrasf=0, nPern=0;
-  days.forEach(v=>{ totOrd+=v.ordH||0; totStr+=v.strH||0; totKm+=v.km||0; if(v.trasf) nTrasf++; if(v.pern) nPern++; });
+  const t = state.tariffs||{ord:0,str:0,strFest:0,km:0,trasf:0,pern:0};
+  let totOrd=0, totStr=0, totStrFest=0, totKm=0, nTrasf=0, nPern=0;
+  days.forEach(v=>{ totOrd+=v.ordH||0; totStr+=v.strH||0; totStrFest+=v.strFestH||0; totKm+=v.km||0; if(v.trasf) nTrasf++; if(v.pern) nPern++; });
 
   if(!window.jspdf || !window.jspdf.jsPDF){
     alert('jsPDF non caricato.');
@@ -451,35 +470,44 @@ async function exportPdf(clientIndex = undefined){
   if(lines.length){ doc.text(lines, pageW/2, 86, {align:'center'}); }
   const title = clientIndex<0 ? `Rapportini ${yyyyMM}` : `Rapportini ${yyyyMM} — ${(state.clients[clientIndex]?.ragione)||''}`;
   doc.setFontSize(12);
-  doc.text(title, 20, 120);
+  // titolo più in basso per evitare sovrapposizione
+  doc.text(title, 20, 140);
 
   if(typeof doc.autoTable === 'function'){
     doc.autoTable({
-      startY:130,
+      startY:150,
       styles:{valign:'middle',fontSize:9,cellPadding:4,overflow:'linebreak'},
       headStyles:{fillColor:[255,10,9],textColor:255,fontStyle:'bold'},
-      head:[['Giorno','In1','Out1','In2','Out2','Ord','Str','Trsf.','Pern.','KM','Note']],
+      // + colonna "Str. Fest."
+      head:[['Giorno','In1','Out1','In2','Out2','Ord','Str','Str. Fest.','Trsf.','Pern.','KM','Note']],
       body:rows, theme:'grid', margin:{left:18,right:18},
-      columnStyles:{0:{cellWidth:34,halign:'center'},1:{cellWidth:32},2:{cellWidth:32},3:{cellWidth:32},4:{cellWidth:32},5:{cellWidth:36,halign:'right'},6:{cellWidth:36,halign:'right'},7:{cellWidth:40},8:{cellWidth:44},9:{cellWidth:32,halign:'right'},10:{cellWidth:'auto'}}
+      columnStyles:{0:{cellWidth:34,halign:'center'},1:{cellWidth:32},2:{cellWidth:32},3:{cellWidth:32},4:{cellWidth:32},5:{cellWidth:36,halign:'right'},6:{cellWidth:36,halign:'right'},7:{cellWidth:46,halign:'right'},8:{cellWidth:40},9:{cellWidth:44},10:{cellWidth:32,halign:'right'},11:{cellWidth:'auto'}}
     });
   }
 
+  // riepilogo + bollo €2 su una sola pagina
   let startY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY + 16 : 300;
-  if(startY > pageH - 220){ doc.addPage(); startY = 60; }
+  if(startY > pageH - 240){ doc.addPage(); startY = 60; }
 
   const items = [
-    ['Ore ordinarie', totOrd.toFixed(2), t.ord.toFixed(2), (totOrd*t.ord).toFixed(2)],
-    ['Ore straordinarie', totStr.toFixed(2), t.str.toFixed(2), (totStr*t.str).toFixed(2)],
-    ['KM', String(Math.round(totKm)), t.km.toFixed(2), (totKm*t.km).toFixed(2)],
-    ['Trasferte', String(nTrasf), t.trasf.toFixed(2), (nTrasf*t.trasf).toFixed(2)],
-    ['Pernotti', String(nPern), t.pern.toFixed(2), (nPern*t.pern).toFixed(2)]
+    ['Ore ordinarie',             totOrd.toFixed(2),     t.ord.toFixed(2),     (totOrd*t.ord).toFixed(2)],
+    ['Ore straordinarie',         totStr.toFixed(2),     t.str.toFixed(2),     (totStr*t.str).toFixed(2)],
+    ['Ore straordinarie festive', totStrFest.toFixed(2), t.strFest.toFixed(2), (totStrFest*t.strFest).toFixed(2)],
+    ['KM',                        String(Math.round(totKm)), t.km.toFixed(2),  (totKm*t.km).toFixed(2)],
+    ['Trasferte',                 String(nTrasf),        t.trasf.toFixed(2),   (nTrasf*t.trasf).toFixed(2)],
+    ['Pernotti',                  String(nPern),         t.pern.toFixed(2),    (nPern*t.pern).toFixed(2)],
+    ['Imposta di bollo',          '1',                   '2.00',               '2.00']
   ];
   if(typeof doc.autoTable === 'function'){
-    doc.autoTable({startY, rowPageBreak:'avoid', styles:{valign:'middle',fontSize:10,cellPadding:4},
+    doc.autoTable({
+      startY, rowPageBreak:'avoid',
+      styles:{valign:'middle',fontSize:10,cellPadding:4},
       headStyles:{fillColor:[255,10,9],textColor:255,fontStyle:'bold'},
-      head:[['Descrizione','Q.tà','Prezzo','Importo']], body:items, theme:'grid', margin:{left:18,right:18},
-      columnStyles:{0:{cellWidth:'auto'},1:{cellWidth:60,halign:'right'},2:{cellWidth:60,halign:'right'},3:{cellWidth:80,halign:'right'}}});
-    const tot = items.reduce((s,r)=>s+parseFloat(r[3]),0);
+      head:[['Descrizione','Q.tà','Prezzo','Importo']],
+      body:items, theme:'grid', margin:{left:18,right:18},
+      columnStyles:{0:{cellWidth:'auto'},1:{cellWidth:60,halign:'right'},2:{cellWidth:60,halign:'right'},3:{cellWidth:80,halign:'right'}}
+    });
+    const tot = items.reduce((s,r)=>s+parseFloat(r[3]||'0'),0);
     doc.setFontSize(12); doc.text(`Totale: € ${tot.toFixed(2)}`, pageW-18, doc.lastAutoTable.finalY+24, {align:'right'});
   }
 
