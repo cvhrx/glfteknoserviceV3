@@ -395,15 +395,62 @@ async function imgToDataURL(url){
   return await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(b); });
 }
 
+
+async function choosePdfClientIndex(){
+  // returns number (clientIndex) or null if cancelled
+  const clients = state.clients || [];
+  if(clients.length <= 1) return (clients.length === 1 ? 0 : -1);
+
+  // Use <dialog> if available
+  if(typeof HTMLDialogElement !== 'undefined'){
+    return await new Promise((resolve)=>{
+      const dlg = document.createElement('dialog');
+      dlg.style.maxWidth = '420px';
+      dlg.style.width = '92vw';
+      dlg.innerHTML = `
+        <form method="dialog" style="margin:0">
+          <h3 style="margin:0 0 10px 0;font-size:16px">Esporta PDF</h3>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <label style="font-size:13px;opacity:.9">Seleziona cliente</label>
+            <select id="__pdfClientSel" style="padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.15);color:inherit">
+              <option value="-1">Tutti i clienti</option>
+              ${clients.map((c,i)=>`<option value="${i}">${c.ragione || ('Cliente '+(i+1))}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+            <button value="cancel" style="padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:transparent;color:inherit">Annulla</button>
+            <button value="ok" style="padding:10px 14px;border-radius:10px;border:0;background:#ff0a09;color:white">Esporta</button>
+          </div>
+        </form>
+      `;
+      document.body.appendChild(dlg);
+      dlg.addEventListener('close', ()=>{
+        try{
+          const v = dlg.returnValue;
+          if(v !== 'ok'){ dlg.remove(); return resolve(null); }
+          const sel = dlg.querySelector('#__pdfClientSel');
+          const idx = parseInt(sel.value,10);
+          dlg.remove();
+          resolve(isNaN(idx)?-1:idx);
+        }catch(e){
+          dlg.remove();
+          resolve(null);
+        }
+      }, {once:true});
+      dlg.showModal();
+    });
+  }
+
+  // Fallback prompt
+  const names = clients.map((c,i)=> i + ': ' + (c.ragione || ('Cliente ' + (i+1))) ).join('\n');
+  const ans = prompt('Esporta PDF per:\n- Tutti = -1\n' + names + '\nInserisci indice o -1:', '-1');
+  const idx = parseInt(ans||'-1',10);
+  return (isNaN(idx)?-1:idx);
+}
+
 async function exportPdf(){
-  let clientIndex = -1;
-  try{
-    if((state.clients||[]).length > 1){
-      const names = state.clients.map((c,i)=> i + ': ' + (c.ragione || ('Cliente ' + (i+1))) ).join('\n');
-      const ans = prompt('Esporta PDF per:\n- Tutti = -1\n' + names + '\nInserisci indice o -1:', '-1');
-      clientIndex = parseInt(ans||'-1',10); if(isNaN(clientIndex)) clientIndex = -1;
-    }else if((state.clients||[]).length === 1){ clientIndex = 0; }
-  }catch(_){ clientIndex = -1; }
+  let clientIndex = await choosePdfClientIndex();
+  if(clientIndex === null) return;
 
   const yyyyMM = (document.getElementById('dayPicker').value || new Date().toISOString().slice(0,10)).slice(0,7);
   const [y,m] = yyyyMM.split('-').map(Number);
