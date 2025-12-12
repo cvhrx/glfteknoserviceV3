@@ -438,9 +438,9 @@ async function exportPdf(){
     v.note?String(v.note):''
   ]);
 
-  const t = state.tariffs||{ord:0,str:0,km:0,trasf:0,pern:0};
-  let totOrd=0, totStr=0, totKm=0, nTrasf=0, nPern=0;
-  days.forEach(v=>{ totOrd+=v.ordH||0; totStr+=v.strH||0; totKm+=v.km||0; if(v.trasf) nTrasf++; if(v.pern) nPern++; });
+  const t = (clientIndex>=0 && state.clients?.[clientIndex]?.tariffs) ? state.clients[clientIndex].tariffs : (state.tariffs||{ord:0,str:0,strFest:0,km:0,trasf:0,pern:0});
+  let totOrd=0, totStr=0, totStrFest=0, totKm=0, nTrasf=0, nPern=0;
+  days.forEach(v=>{ totOrd+=v.ordH||0; totStr+=v.strH||0; totStrFest+=v.strFestH||0; totKm+=v.km||0; if(v.trasf) nTrasf++; if(v.pern) nPern++; });
 
   if(!window.jspdf || !window.jspdf.jsPDF){
     alert('jsPDF non caricato. Controlla script in index.html.');
