@@ -538,13 +538,7 @@ doc.autoTable({
       body:rows,
       theme:'grid',
       margin:{left:18,right:18},
-      columnStyles: colDays,
-        0:{cellWidth:34, halign:'center'},
-        1:{cellWidth:32}, 2:{cellWidth:32}, 3:{cellWidth:32}, 4:{cellWidth:32},
-        5:{cellWidth:36, halign:'right'}, 6:{cellWidth:36, halign:'right'},
-        7:{cellWidth:40}, 8:{cellWidth:44}, 9:{cellWidth:32, halign:'right'},
-        10:{cellWidth:'auto'} // NOTE largo
-      }
+      columnStyles: colDays
     });
   }else{
     doc.setFontSize(11);
@@ -653,4 +647,3 @@ doc.autoTable({
   doc.save(`rapportini_${yyyyMM}${suffix}.pdf`);
 
 }
-
