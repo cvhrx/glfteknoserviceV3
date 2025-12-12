@@ -430,27 +430,15 @@ async function exportPdf(){
     .sort((a,b)=>a.id.localeCompare(b.id));
 
   // Ora: Data = solo giorno, colonne Ord e Str separate
-  const getClientName = (idx)=>{
-    if(idx==null || idx<0) return '—';
-    const c = state.clients?.[idx];
-    return (c?.ragione) || ('Cliente ' + (idx+1));
-  };
+  const rows = days.map(v => [
+    v.id.slice(-2),
+    v.in1||'-', v.out1||'-', v.in2||'-', v.out2||'-',
+    (v.ordH||0).toFixed(2), (v.strH||0).toFixed(2),
+    v.trasf?'SI':'', v.pern?'SI':'', String(v.km||0),
+    v.note?String(v.note):''
+  ]);
 
-  const rows = days.map(v => {
-    const base = [
-      v.id.slice(-2),
-      v.in1||'-', v.out1||'-', v.in2||'-', v.out2||'-',
-      (v.ordH||0).toFixed(2), (v.strH||0).toFixed(2),
-      v.trasf?'SI':'', v.pern?'SI':'', String(v.km||0),
-      v.note?String(v.note):''
-    ];
-    // Se export 'Tutti', aggiungo colonna Cliente subito dopo il giorno
-    if(clientIndex < 0){
-      base.splice(1, 0, getClientName(v.clientIndex));
-    }
-    return base;
-  });
-const t = (clientIndex>=0 && state.clients?.[clientIndex]?.tariffs) ? state.clients[clientIndex].tariffs : (state.tariffs||{ord:0,str:0,strFest:0,km:0,trasf:0,pern:0});
+  const t = (clientIndex>=0 && state.clients?.[clientIndex]?.tariffs) ? state.clients[clientIndex].tariffs : (state.tariffs||{ord:0,str:0,strFest:0,km:0,trasf:0,pern:0});
   let totOrd=0, totStr=0, totStrFest=0, totKm=0, nTrasf=0, nPern=0;
   days.forEach(v=>{ totOrd+=v.ordH||0; totStr+=v.strH||0; totStrFest+=v.strFestH||0; totKm+=v.km||0; if(v.trasf) nTrasf++; if(v.pern) nPern++; });
 
@@ -509,36 +497,15 @@ const t = (clientIndex>=0 && state.clients?.[clientIndex]?.tariffs) ? state.clie
 
   // tabella giornaliera
   if(typeof doc.autoTable === 'function'){
-    
-  const headDays = (clientIndex < 0)
-    ? [['Giorno','Cliente','In1','Out1','In2','Out2','Ord','Str','Trsf.','Pern.','KM','Note']]
-    : [['Giorno','In1','Out1','In2','Out2','Ord','Str','Trsf.','Pern.','KM','Note']];
-
-  const colDays = (clientIndex < 0)
-    ? {
-        0:{cellWidth:28, halign:'center'},
-        1:{cellWidth:90},
-        2:{cellWidth:30}, 3:{cellWidth:30}, 4:{cellWidth:30}, 5:{cellWidth:30},
-        6:{cellWidth:34, halign:'right'}, 7:{cellWidth:34, halign:'right'},
-        8:{cellWidth:36}, 9:{cellWidth:36}, 10:{cellWidth:30, halign:'right'},
-        11:{cellWidth:'auto'}
-      }
-    : {
-        0:{cellWidth:34, halign:'center'},
-        1:{cellWidth:32}, 2:{cellWidth:32}, 3:{cellWidth:32}, 4:{cellWidth:32},
-        5:{cellWidth:36, halign:'right'}, 6:{cellWidth:36, halign:'right'},
-        7:{cellWidth:40}, 8:{cellWidth:44}, 9:{cellWidth:32, halign:'right'},
-        10:{cellWidth:'auto'}
-      };
-doc.autoTable({
+    doc.autoTable({
       startY: startY + 10,
       styles:{valign:'middle',fontSize:9,cellPadding:4,overflow:'linebreak'},
       headStyles:{fillColor:[255,10,9],textColor:255,fontStyle:'bold'},
-      head: headDays,
+      head:[['Giorno','In1','Out1','In2','Out2','Ord','Str','Trsf.','Pern.','KM','Note']],
       body:rows,
       theme:'grid',
       margin:{left:18,right:18},
-      columnStyles: colDays,
+      columnStyles:{
         0:{cellWidth:34, halign:'center'},
         1:{cellWidth:32}, 2:{cellWidth:32}, 3:{cellWidth:32}, 4:{cellWidth:32},
         5:{cellWidth:36, halign:'right'}, 6:{cellWidth:36, halign:'right'},
@@ -553,87 +520,15 @@ doc.autoTable({
   }
 
   // riepilogo finale
-  const getTar = (idx)=>{
-    if(idx>=0 && state.clients?.[idx]?.tariffs) return state.clients[idx].tariffs;
-    return state.tariffs || {ord:0,str:0,strFest:0,km:0,trasf:0,pern:0};
-  };
-
-  if(clientIndex < 0){
-    // Riepilogo PER CLIENTE con tariffari diversi
-    const groups = {};
-    days.forEach(v=>{
-      const idx = (v.clientIndex==null ? -1 : v.clientIndex);
-      if(!groups[idx]) groups[idx] = {ord:0,str:0,km:0,trasf:0,pern:0};
-      groups[idx].ord += v.ordH||0;
-      groups[idx].str += v.strH||0;
-      groups[idx].km  += v.km||0;
-      if(v.trasf) groups[idx].trasf += 1;
-      if(v.pern)  groups[idx].pern  += 1;
-    });
-
-    const rowsCli = [];
-    let grand = 0;
-
-    Object.keys(groups).sort((a,b)=>Number(a)-Number(b)).forEach(k=>{
-      const idx = Number(k);
-      const g = groups[idx];
-      const t = getTar(idx);
-
-      const imp =
-        g.ord * (t.ord||0) +
-        g.str * (t.str||0) +
-        g.km  * (t.km||0) +
-        g.trasf * (t.trasf||0) +
-        g.pern  * (t.pern||0);
-
-      grand += imp;
-
-      const name = (idx>=0 ? (state.clients?.[idx]?.ragione || ('Cliente '+(idx+1))) : 'Senza cliente');
-      rowsCli.push([
-        name,
-        g.ord.toFixed(2),
-        g.str.toFixed(2),
-        String(Math.round(g.km)),
-        String(g.trasf),
-        String(g.pern),
-        imp.toFixed(2)
-      ]);
-    });
-
-    const ySum = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : startY+220) + 18;
-    doc.autoTable({
-      startY: ySum,
-      styles:{valign:'middle',fontSize:10,cellPadding:4},
-      headStyles:{fillColor:[255,10,9],textColor:255,fontStyle:'bold'},
-      head:[['Cliente','Ord(h)','Str(h)','KM','Trsf','Pern','Subtot €']],
-      body: rowsCli,
-      theme:'grid',
-      margin:{left:18,right:18},
-      columnStyles:{
-        0:{cellWidth:'auto'},
-        1:{cellWidth:60,halign:'right'},
-        2:{cellWidth:60,halign:'right'},
-        3:{cellWidth:46,halign:'right'},
-        4:{cellWidth:40,halign:'center'},
-        5:{cellWidth:40,halign:'center'},
-        6:{cellWidth:80,halign:'right'}
-      }
-    });
-
-    doc.setFontSize(12);
-    doc.text(`Totale generale: € ${grand.toFixed(2)}`, pageW-18, doc.lastAutoTable.finalY+24, {align:'right'});
-
-  } else {
-    // Riepilogo singolo cliente (come prima)
-    const t = getTar(clientIndex);
-    const items = [
-      ['Ore ordinarie', totOrd.toFixed(2), (t.ord||0).toFixed(2), (totOrd*(t.ord||0)).toFixed(2)],
-      ['Ore straordinarie', totStr.toFixed(2), (t.str||0).toFixed(2), (totStr*(t.str||0)).toFixed(2)],
-      ['KM', String(Math.round(totKm)), (t.km||0).toFixed(2), (totKm*(t.km||0)).toFixed(2)],
-      ['Trasferte', String(nTrasf), (t.trasf||0).toFixed(2), (nTrasf*(t.trasf||0)).toFixed(2)],
-      ['Pernotti', String(nPern), (t.pern||0).toFixed(2), (nPern*(t.pern||0)).toFixed(2)]
-    ];
-    const ySum = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : startY+220) + 18;
+  const items = [
+    ['Ore ordinarie', totOrd.toFixed(2), t.ord.toFixed(2), (totOrd*t.ord).toFixed(2)],
+    ['Ore straordinarie', totStr.toFixed(2), t.str.toFixed(2), (totStr*t.str).toFixed(2)],
+    ['KM', String(Math.round(totKm)), t.km.toFixed(2), (totKm*t.km).toFixed(2)],
+    ['Trasferte', String(nTrasf), t.trasf.toFixed(2), (nTrasf*t.trasf).toFixed(2)],
+    ['Pernotti', String(nPern), t.pern.toFixed(2), (nPern*t.pern).toFixed(2)]
+  ];
+  const ySum = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY + 16 : startY + 150;
+  if(typeof doc.autoTable === 'function'){
     doc.autoTable({
       startY: ySum,
       styles:{valign:'middle',fontSize:10,cellPadding:4},
