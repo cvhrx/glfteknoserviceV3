@@ -3,7 +3,7 @@ const $ = s => document.querySelector(s);
 const pad2 = n => String(n).padStart(2,'0');
 const fmtIT = iso => { const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
 
-const state = { user:null, company:{}, clients:[], tariffs:{ord:12,str:25,km:0.4,trasf:50,pern:80} };
+const state = { user:null, company:{}, clients:[], tariffs:{ord:12,str:25,km:0.4,trasf:50,pern:80,strFest:35} };
 
 const auth = firebase.auth();
 const db   = firebase.firestore();
@@ -60,6 +60,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#tabTar').onclick = ()=> togglePane('Tar');
   $('#tabCli').onclick = ()=> togglePane('Cli');
   $('#btnSaveTar').onclick = saveTariffs;
+  const tsel = document.getElementById('tarClientSelect');
+  if(tsel){ tsel.onchange = ()=> loadTariffsSelection(); }
+
   $('#btnAddCli').onclick = addClient;
   $('#btnDelCli').onclick = delClient;
   $('#btnSaveCli').onclick = saveClients;
@@ -70,6 +73,50 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#closeDayDlg').onclick = ()=> $('#dayDlg').close();
 });
 
+
+function setTariffInputs(t){
+  $('#tarOrd').value = (t.ord ?? 0);
+  $('#tarStr').value = (t.str ?? 0);
+  const tf = document.getElementById('tarStrFest');
+  if(tf) tf.value = (t.strFest ?? 0);
+  $('#tarKm').value = (t.km ?? 0);
+  $('#tarTrasf').value = (t.trasf ?? 0);
+  $('#tarPern').value = (t.pern ?? 0);
+}
+
+function getTariffInputs(){
+  return {
+    ord: parseFloat($('#tarOrd').value||'0')||0,
+    str: parseFloat($('#tarStr').value||'0')||0,
+    strFest: parseFloat((document.getElementById('tarStrFest')?.value)||'0')||0,
+    km: parseFloat($('#tarKm').value||'0')||0,
+    trasf: parseFloat($('#tarTrasf').value||'0')||0,
+    pern: parseFloat($('#tarPern').value||'0')||0
+  };
+}
+
+function renderTarClientSelect(){
+  const sel = document.getElementById('tarClientSelect');
+  if(!sel) return;
+  const cur = sel.value ?? '-1';
+  const opts = ['<option value="-1">Globali (default)</option>']
+    .concat((state.clients||[]).map((c,i)=>`<option value="${i}">${c.ragione || ('Cliente '+(i+1))}</option>`));
+  sel.innerHTML = opts.join('');
+  // mantieni selezione se possibile
+  if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+}
+
+function loadTariffsSelection(){
+  const sel = document.getElementById('tarClientSelect');
+  if(!sel) return;
+  const v = parseInt(sel.value,10);
+  if(isNaN(v) || v < 0){
+    setTariffInputs(state.tariffs || {});
+    return;
+  }
+  const c = state.clients?.[v];
+  setTariffInputs((c && c.tariffs) ? c.tariffs : (state.tariffs||{}));
+}
 function togglePane(which){
   const tar = which==='Tar';
   $('#paneTariffe').classList.toggle('hidden', !tar);
@@ -151,15 +198,13 @@ async function loadClientsAndTariffs(){
     const data = ut.data();
     state.tariffs = data.tariffs || state.tariffs;
     state.company = data.company || {};
-    document.getElementById('tarOrd').value = state.tariffs.ord;
-    document.getElementById('tarStr').value = state.tariffs.str;
-    document.getElementById('tarKm').value  = state.tariffs.km;
-    document.getElementById('tarTrasf').value = state.tariffs.trasf;
-    document.getElementById('tarPern').value  = state.tariffs.pern;
+    setTariffInputs(state.tariffs);
   }
   const cs = await uref.collection('clients').get();
   state.clients = cs.docs.map(d=>({id:d.id, ...d.data()}));
   renderClients();
+  renderTarClientSelect();
+  loadTariffsSelection();
 }
 
 function renderClients(){
@@ -168,7 +213,9 @@ function renderClients(){
   const opts = (state.clients||[]).map((c,i)=>'<option value="'+i+'">'+(c.ragione||('Cliente '+(i+1)))+'</option>').join('');
   if(sel){ sel.innerHTML = '<option>—</option>'+opts; }
   if(sel2){ sel2.innerHTML = opts; }
+  renderTarClientSelect();
 }
+
 
 function addClient(){
   state.clients.push({
@@ -311,15 +358,35 @@ function showDayDetail(v){
 }
 
 async function saveTariffs(){
-  state.tariffs = {
-    ord: parseFloat(document.getElementById('tarOrd').value||'12')||12,
-    str: parseFloat(document.getElementById('tarStr').value||'25')||25,
-    km: parseFloat(document.getElementById('tarKm').value||'0.4')||0.4,
-    trasf: parseFloat(document.getElementById('tarTrasf').value||'50')||50,
-    pern: parseFloat(document.getElementById('tarPern').value||'80')||80
-  };
-  await db.collection('users').doc(state.user.uid).set({tariffs: state.tariffs}, {merge:true});
-  alert('Tariffe salvate');
+  const t = getTariffInputs();
+
+  const sel = document.getElementById('tarClientSelect');
+  const v = sel ? parseInt(sel.value,10) : -1;
+
+  // -1 => globali
+  if(!sel || isNaN(v) || v < 0){
+    state.tariffs = t;
+    await db.collection('users').doc(state.user.uid).set({tariffs: t}, {merge:true});
+    alert('Tariffe globali salvate');
+    return;
+  }
+
+  // tariffe per cliente
+  const c = state.clients?.[v];
+  if(!c){
+    alert('Cliente non valido');
+    return;
+  }
+  c.tariffs = t;
+
+  // Se ho id (doc Firestore), aggiorno quel doc. Altrimenti fallback: salva tutti i clienti.
+  if(c.id){
+    await db.collection('users').doc(state.user.uid).collection('clients').doc(c.id).set({tariffs: t}, {merge:true});
+    alert('Tariffe cliente salvate');
+  }else{
+    await saveClients();
+    alert('Tariffe cliente salvate (salvataggio completo)');
+  }
 }
 
 async function imgToDataURL(url){

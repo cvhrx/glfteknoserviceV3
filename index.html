@@ -9,9 +9,11 @@
   <link rel="icon" href="assets/logo.png">
   <link rel="apple-touch-icon" href="assets/logo.png">
   <link rel="stylesheet" href="styles.css">
+  <!-- Firebase (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <!-- PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
@@ -75,7 +77,6 @@
         <div class="row chips">
           <button type="button" id="chipTrasf" class="chip">Trasferta</button>
           <button type="button" id="chipPern" class="chip">Pernotto</button>
-          <button id="chipFestivo" class="chip">Festivo</button>
         </div>
         <div class="field"><label>Note</label><textarea id="note" rows="3" placeholder="Cliente / sede / attività"></textarea></div>
         <div class="row gap">
@@ -88,7 +89,6 @@
       <div class="card row tabs">
         <button id="tabList" class="chip active">Elenco</button>
         <button id="tabCal" class="chip">Calendario</button>
-        <span id="monthLabel" class="muted month"></span>
       </div>
       <section id="listView" class="card"></section>
       <section id="calView" class="card hidden"><div id="calGrid" class="cal-grid"></div></section>
@@ -102,18 +102,14 @@
       <div class="row two">
         <div class="field"><label>€ / h ordinarie</label><input id="tarOrd" inputmode="decimal" value="12"></div>
         <div class="field"><label>€ / h straordinarie</label><input id="tarStr" inputmode="decimal" value="25"></div>
-        <div class="row two">
-  <div class="field">
-    <label>€ / h straord. festivi</label>
-    <input id="tarStrFest" inputmode="decimal" value="35">
-  </div>
-</div>
       </div>
+      <div class="row"><div class="field"><label>€ / h straord. festivi</label><input id="tarStrFest" inputmode="decimal" value="35"></div></div>
       <div class="row two">
         <div class="field"><label>€ / km</label><input id="tarKm" inputmode="decimal" value="0.40"></div>
         <div class="field"><label>€ Trasferta (gg)</label><input id="tarTrasf" inputmode="decimal" value="50"></div>
       </div>
       <div class="row"><div class="field"><label>€ Pernotto (nt)</label><input id="tarPern" inputmode="decimal" value="80"></div></div>
+      <div class="row"><div class="field"><label>Applica a</label><select id="tarClientSelect"><option value="-1">Globali (default)</option></select></div></div>
       <div class="row right"><button type="button" class="btn primary" id="btnSaveTar">Salva tariffe</button></div>
     </div>
     <div id="paneClienti" class="hidden">
@@ -131,22 +127,9 @@
     <div id="dayDetail"></div>
   </dialog>
 
-  <!-- Dialog export PDF con menu a tendina -->
-  <dialog id="pdfDlg">
-    <div class="dlg-head">
-      <h3>Esporta PDF</h3>
-      <button id="pdfCancel" class="icon" type="button">✕</button>
-    </div>
-    <div class="field">
-      <label>Cliente</label>
-      <select id="pdfClient"></select>
-    </div>
-    <div class="row right">
-      <button id="pdfOk" class="btn primary" type="button">Esporta</button>
-    </div>
-  </dialog>
-
-  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker_v4.js'));}</script>
+  <script>
+    if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('service-worker_v4.js'));}
+  </script>
   <script src="firebase.js"></script>
   <script src="app.js"></script>
 </body>
