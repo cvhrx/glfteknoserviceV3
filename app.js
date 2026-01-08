@@ -435,9 +435,17 @@ async function loadDay(d){
     document.getElementById('chipPern').classList.toggle('active', !!v.pern);
     document.getElementById('clientSelect').selectedIndex = (v.clientIndex??-1)+1;
   }else{
-    document.getElementById('km').value=0; document.getElementById('note').value='';
+    // reset form when day is empty
+    setTime('#in1h','#in1m','00:00');
+    setTime('#out1h','#out1m','00:00');
+    setTime('#in2h','#in2m','00:00');
+    setTime('#out2h','#out2m','00:00');
+    document.getElementById('km').value = 0;
+    document.getElementById('note').value = '';
     document.getElementById('chipTrasf').classList.remove('active');
     document.getElementById('chipPern').classList.remove('active');
+    const fest = document.getElementById('chipFestivo');
+    if(fest) fest.classList.remove('active');
     document.getElementById('clientSelect').selectedIndex = 0;
   }
 }
