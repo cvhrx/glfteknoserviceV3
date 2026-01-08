@@ -100,8 +100,9 @@ function renderTarClientSelect(){
   const sel = document.getElementById('tarClientSelect');
   if(!sel) return;
   const cur = sel.value ?? '-1';
-  const opts = ['<option value="-1">Globali (default)</option>']
-    .concat((state.clients||[]).map((c,i)=>`<option value="${i}">${c.ragione || ('Cliente '+(i+1))}</option>`));
+  const opts = ['<option value="-1">Globali (default)</option>','<option value="-2">Senza cliente</option>']
+    .concat((state.clients||[]).map((c,i)=>({c,i})).filter(x=>!isEmptyClient(x.c))
+      .map(x=>`<option value="${x.i}">${x.c.ragione || ('Cliente '+(x.i+1))}</option>`));
   sel.innerHTML = opts.join('');
   // mantieni selezione se possibile
   if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
@@ -111,8 +112,12 @@ function loadTariffsSelection(){
   const sel = document.getElementById('tarClientSelect');
   if(!sel) return;
   const v = parseInt(sel.value,10);
-  if(isNaN(v) || v < 0){
+  if(isNaN(v) || v === -1){
     setTariffInputs(state.tariffs || {});
+    return;
+  }
+  if(v === -2){
+    setTariffInputs(state.tariffsNoClient || state.tariffs || {});
     return;
   }
   const c = state.clients?.[v];
@@ -219,6 +224,7 @@ async function loadClientsAndTariffs(){
     const data = ut.data();
     state.tariffs = data.tariffs || state.tariffs;
     state.company = data.company || {};
+    state.tariffsNoClient = data.tariffsNoClient || null;
     setTariffInputs(state.tariffs);
   }
   const cs = await uref.collection('clients').get();
@@ -228,12 +234,22 @@ async function loadClientsAndTariffs(){
   loadTariffsSelection();
 }
 
+function isEmptyClient(c){
+  if(!c) return true;
+  return !(c.ragione||c.piva||c.email||c.tel||c.indirizzo||c.sdi);
+}
+
+function getNoClientIndex(){
+  return (state.clients||[]).findIndex(isEmptyClient);
+}
+
 function renderClients(){
   const sel  = document.getElementById('clientSelect');
   const sel2 = document.getElementById('cliSelect');
-  const opts = (state.clients||[]).map((c,i)=>'<option value="'+i+'">'+(c.ragione||('Cliente '+(i+1)))+'</option>').join('');
-  if(sel){ sel.innerHTML = '<option>—</option>'+opts; }
-  if(sel2){ sel2.innerHTML = '<option value="-1">➕ Nuovo cliente</option>' + opts; }
+  const optsReal = (state.clients||[]).map((c,i)=>({c,i})).filter(x=>!isEmptyClient(x.c))
+    .map(x=>'<option value="'+x.i+'">'+(x.c.ragione||('Cliente '+(x.i+1)))+'</option>').join('');
+  if(sel){ sel.innerHTML = '<option>—</option>'+optsReal; }
+  if(sel2){ sel2.innerHTML = '<option value="-1">➕ Nuovo cliente</option>' + optsReal; }
   // robust: re-inject option if some browser strips it
   if(sel2 && ![...sel2.options].some(o=>o.value==='-1')){
     const o=document.createElement('option');
@@ -454,11 +470,19 @@ async function saveTariffs(){
   const v = sel ? parseInt(sel.value,10) : -1;
 
   // -1 => globali
-  if(!sel || isNaN(v) || v < 0){
+  if(!sel || isNaN(v) || v === -1){
     state.tariffs = t;
     await db.collection('users').doc(state.user.uid).set({tariffs: t}, {merge:true});
     alert('Tariffe globali salvate');
     return;
+  // -2 => Senza cliente
+  if(v === -2){
+    state.tariffsNoClient = t;
+    await db.collection('users').doc(state.user.uid).set({tariffsNoClient: t}, {merge:true});
+    alert('Tariffe "Senza cliente" salvate');
+    return;
+  }
+
   }
 
   // tariffe per cliente
@@ -507,8 +531,8 @@ async function choosePdfClientIndex(){
           <div style="display:flex;flex-direction:column;gap:8px">
             <label style="font-size:13px;opacity:.9">Seleziona cliente</label>
             <select id="__pdfClientSel" style="padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.15);color:inherit">
-              <option value="-1">Tutti i clienti</option>
-              ${clients.map((c,i)=>`<option value="${i}">${clientLabel(c,i)}</option>`).join('')}
+              <option value="-1">Tutti i clienti</option><option value="-2">Senza cliente</option>
+              ${clients.map((c,i)=>({c,i})).filter(x=>!isEmptyClient(x.c)).map(x=>`<option value="${x.i}">${x.c.ragione || ('Cliente '+(x.i+1))}</option>`).join('')}
             </select>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
@@ -572,7 +596,8 @@ async function exportPdf(){
 
   // Ora: Data = solo giorno, colonne Ord e Str separate
   const getClientName = (idx)=>{
-    if(idx==null || idx<0) return '—';
+    const noIdx = getNoClientIndex();
+    if(idx==null || idx<0 || idx===noIdx) return 'Senza cliente';
     const c = state.clients?.[idx];
     return (c?.ragione) || ('Cliente ' + (idx+1));
   };
@@ -689,7 +714,9 @@ doc.autoTable({
 
   // riepilogo finale
   const getTar = (idx)=>{
+    const noIdx = getNoClientIndex();
     if(idx>=0 && state.clients?.[idx]?.tariffs) return state.clients[idx].tariffs;
+    if(idx===-2 || idx===noIdx) return state.tariffsNoClient || state.tariffs || {ord:0,str:0,strFest:0,km:0,trasf:0,pern:0};
     return state.tariffs || {ord:0,str:0,strFest:0,km:0,trasf:0,pern:0};
   };
 
@@ -697,7 +724,9 @@ doc.autoTable({
     // Riepilogo PER CLIENTE con tariffari diversi
     const groups = {};
     days.forEach(v=>{
-      const idx = (v.clientIndex==null ? -1 : v.clientIndex);
+      const noIdx = getNoClientIndex();
+      const idx0 = (v.clientIndex==null ? -2 : v.clientIndex);
+      const idx = (idx0===noIdx || idx0<0) ? -2 : idx0;
       if(!groups[idx]) groups[idx] = {ord:0,str:0,km:0,trasf:0,pern:0};
       groups[idx].ord += v.ordH||0;
       groups[idx].str += v.strH||0;
