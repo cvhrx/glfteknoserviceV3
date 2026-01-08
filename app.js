@@ -234,6 +234,13 @@ function renderClients(){
   const opts = (state.clients||[]).map((c,i)=>'<option value="'+i+'">'+(c.ragione||('Cliente '+(i+1)))+'</option>').join('');
   if(sel){ sel.innerHTML = '<option>—</option>'+opts; }
   if(sel2){ sel2.innerHTML = '<option value="-1">➕ Nuovo cliente</option>' + opts; }
+  // robust: re-inject option if some browser strips it
+  if(sel2 && ![...sel2.options].some(o=>o.value==='-1')){
+    const o=document.createElement('option');
+    o.value='-1';
+    o.textContent='➕ Nuovo cliente';
+    sel2.insertBefore(o, sel2.firstChild);
+  }
   renderTarClientSelect();
 }
 
