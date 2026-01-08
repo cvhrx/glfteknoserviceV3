@@ -63,9 +63,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const tsel = document.getElementById('tarClientSelect');
   if(tsel){ tsel.onchange = ()=> loadTariffsSelection(); }
 
-  $('#btnAddCli').onclick = addClient;
+  const addBtn = document.getElementById('btnAddCli');
+  if(addBtn) addBtn.classList.add('hidden');
   $('#btnDelCli').onclick = delClient;
-  $('#btnSaveCli').onclick = saveClients;
+  $('#btnSaveCli').onclick = saveClientUpsert;
   $('#btnSaveDay').onclick = saveDay;
   $('#btnExportPdf').onclick = exportPdf;
   $('#tabList').onclick = ()=> switchView('list');
@@ -182,10 +183,26 @@ async function initApp(){
   buildTimeSelectors();
   await loadClientsAndTariffs();
 
+  const cliSel = document.getElementById('cliSelect');
+  if(cliSel){
+    cliSel.onchange = ()=>{
+      const i = getSelectedClientIndex();
+      if(i>=0) fillClientForm(i);
+    };
+  }
+  if((state.clients||[]).length>0){
+    if(cliSel) cliSel.value = '0';
+    fillClientForm(0);
+  }
+
+
   const dp = document.getElementById('dayPicker');
   const today = new Date().toISOString().slice(0,10);
   dp.value = dp.value || today;
-  dp.addEventListener('change', e=> loadMonth(e.target.value.slice(0,7)));
+  dp.addEventListener('change', async e=>{
+    await loadDay(e.target.value);
+    await loadMonth(e.target.value.slice(0,7));
+  });
 
   await loadDay(dp.value);
   await loadMonth(dp.value.slice(0,7));
@@ -216,6 +233,59 @@ function renderClients(){
   renderTarClientSelect();
 }
 
+function getSelectedClientIndex(){
+  const sel = document.getElementById('cliSelect');
+  if(!sel) return -1;
+  const v = parseInt(sel.value,10);
+  return isNaN(v) ? -1 : v;
+}
+
+function fillClientForm(i){
+  const c = state.clients?.[i];
+  document.getElementById('cliRagione').value = c?.ragione || '';
+  document.getElementById('cliPiva').value = c?.piva || '';
+  document.getElementById('cliEmail').value = c?.email || '';
+  document.getElementById('cliTel').value = c?.tel || '';
+  document.getElementById('cliIndirizzo').value = c?.indirizzo || '';
+  document.getElementById('cliSdi').value = c?.sdi || '';
+}
+
+function readClientForm(){
+  return {
+    ragione: document.getElementById('cliRagione').value || '',
+    piva: document.getElementById('cliPiva').value || '',
+    email: document.getElementById('cliEmail').value || '',
+    tel: document.getElementById('cliTel').value || '',
+    indirizzo: document.getElementById('cliIndirizzo').value || '',
+    sdi: document.getElementById('cliSdi').value || ''
+  };
+}
+
+
+
+async function saveClientUpsert(){
+  const i = getSelectedClientIndex();
+  const data = readClientForm();
+
+  if(i >= 0 && state.clients?.[i]){
+    Object.assign(state.clients[i], data);
+    if(state.clients[i].id){
+      await db.collection('users').doc(state.user.uid).collection('clients').doc(state.clients[i].id).set(data, {merge:true});
+    }else{
+      await saveClients();
+    }
+    renderClients();
+    alert('Salvataggio effettuato');
+    return;
+  }
+
+  state.clients.push(data);
+  await saveClients();
+  renderClients();
+  const sel = document.getElementById('cliSelect');
+  if(sel){ sel.value = String(state.clients.length-1); }
+  alert('Salvataggio effettuato');
+}
 
 function addClient(){
   state.clients.push({
@@ -399,6 +469,10 @@ async function imgToDataURL(url){
 async function choosePdfClientIndex(){
   // returns number (clientIndex) or null if cancelled
   const clients = state.clients || [];
+  const clientLabel = (c,i)=>{
+    const empty = !c || (!c.ragione && !c.piva && !c.email && !c.tel && !c.indirizzo && !c.sdi);
+    return empty ? 'Senza cliente' : (c.ragione || ('Cliente ' + (i+1)));
+  };
   if(clients.length <= 1) return (clients.length === 1 ? 0 : -1);
 
   // Use <dialog> if available
@@ -414,7 +488,7 @@ async function choosePdfClientIndex(){
             <label style="font-size:13px;opacity:.9">Seleziona cliente</label>
             <select id="__pdfClientSel" style="padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.15);color:inherit">
               <option value="-1">Tutti i clienti</option>
-              ${clients.map((c,i)=>`<option value="${i}">${c.ragione || ('Cliente '+(i+1))}</option>`).join('')}
+              ${clients.map((c,i)=>`<option value="${i}">${clientLabel(c,i)}</option>`).join('')}
             </select>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
@@ -674,6 +748,13 @@ doc.autoTable({
       ['Trasferte', String(nTrasf), (t.trasf||0).toFixed(2), (nTrasf*(t.trasf||0)).toFixed(2)],
       ['Pernotti', String(nPern), (t.pern||0).toFixed(2), (nPern*(t.pern||0)).toFixed(2)]
     ];
+    const totBase = items.reduce((s, r)=> s + parseFloat(r[3]), 0);
+    const sogliaBollo = 77.47;
+    const bollo = (totBase >= sogliaBollo) ? 2.00 : 0;
+    if(bollo > 0){
+      items.push(['Imposta di bollo', '1', '2.00', '2.00']);
+    }
+
     const ySum = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : startY+220) + 18;
     doc.autoTable({
       startY: ySum,
@@ -685,9 +766,9 @@ doc.autoTable({
       margin:{left:18,right:18},
       columnStyles:{0:{cellWidth:'auto'},1:{cellWidth:60,halign:'right'},2:{cellWidth:60,halign:'right'},3:{cellWidth:80,halign:'right'}}
     });
-    const tot = items.reduce((s, r)=> s + parseFloat(r[3]), 0);
+    const tot = totBase + bollo;
     doc.setFontSize(12);
-    doc.text(`Totale: € ${tot.toFixed(2)}`, pageW-18, doc.lastAutoTable.finalY+24, {align:'right'});
+    doc.text('Totale: € ' + tot.toFixed(2), pageW-18, doc.lastAutoTable.finalY+24, {align:'right'});
   }
 
   const suffix = clientIndex<0 ? '' : '_' + (state.clients[clientIndex]?.ragione||'cliente').replace(/\s+/g,'_');

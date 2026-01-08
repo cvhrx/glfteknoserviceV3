@@ -103,22 +103,20 @@
         <div class="field"><label>€ / h ordinarie</label><input id="tarOrd" inputmode="decimal" value="12"></div>
         <div class="field"><label>€ / h straordinarie</label><input id="tarStr" inputmode="decimal" value="25"></div>
       </div>
-      <div class="row"><div class="field"><label>€ / h straord. festivi</label><input id="tarStrFest" inputmode="decimal" value="35"></div></div>
       <div class="row two">
         <div class="field"><label>€ / km</label><input id="tarKm" inputmode="decimal" value="0.40"></div>
         <div class="field"><label>€ Trasferta (gg)</label><input id="tarTrasf" inputmode="decimal" value="50"></div>
       </div>
       <div class="row"><div class="field"><label>€ Pernotto (nt)</label><input id="tarPern" inputmode="decimal" value="80"></div></div>
-      <div class="row"><div class="field"><label>Applica a</label><select id="tarClientSelect"><option value="-1">Globali (default)</option></select></div></div>
       <div class="row right"><button type="button" class="btn primary" id="btnSaveTar">Salva tariffe</button></div>
     </div>
     <div id="paneClienti" class="hidden">
       <div class="row two"><div class="field"><label>Ragione Sociale</label><input id="cliRagione"></div><div class="field"><label>P.IVA / CF</label><input id="cliPiva"></div></div>
       <div class="row two"><div class="field"><label>Email</label><input id="cliEmail"></div><div class="field"><label>Telefono</label><input id="cliTel"></div></div>
       <div class="row two"><div class="field"><label>Indirizzo</label><input id="cliIndirizzo"></div><div class="field"><label>Codice SDI</label><input id="cliSdi"></div></div>
-      <div class="row gap"><button type="button" class="btn primary" id="btnAddCli">Aggiungi cliente</button><button type="button" class="btn ghost" id="btnDelCli">Elimina selezionato</button></div>
+      <div class="row gap"><button type="button" class="btn primary" id="btnAddCli" class="hidden">Aggiungi cliente</button><button type="button" class="btn ghost" id="btnDelCli">Elimina selezionato</button></div>
       <div class="field"><label>Seleziona cliente</label><select id="cliSelect"></select></div>
-      <div class="row right"><button type="button" class="btn primary" id="btnSaveCli">Salva clienti</button></div>
+      <div class="row right"><button type="button" class="btn primary" id="btnSaveCli">Salva cliente</button></div>
     </div>
   </dialog>
 
