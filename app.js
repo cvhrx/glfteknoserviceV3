@@ -3,7 +3,7 @@ const $ = s => document.querySelector(s);
 const pad2 = n => String(n).padStart(2,'0');
 const fmtIT = iso => { const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; };
 
-const state = { user:null, company:{}, clients:[], tariffs:{ord:12,str:25,km:0.4,trasf:50,pern:80,strFest:35}, tariffsNoClient:null };
+const state = { user:null, company:{}, clients:[], tariffs:{ord:12,str:25,km:0.4,trasf:50,pern:80,strFest:35} };
 
 const auth = firebase.auth();
 const db   = firebase.firestore();
@@ -236,37 +236,53 @@ async function loadClientsAndTariffs(){
 
 function isEmptyClient(c){
   if(!c) return true;
-  const v = (x)=> (String(x||'').trim());
-  return !(v(c.ragione)||v(c.piva)||v(c.email)||v(c.tel)||v(c.indirizzo)||v(c.sdi));
+  return !(c.ragione||c.piva||c.email||c.tel||c.indirizzo||c.sdi);
 }
-
 
 function getNoClientIndex(){
   return (state.clients||[]).findIndex(isEmptyClient);
 }
 
 function renderClients(){
-  const sel  = document.getElementById('clientSelect');
-  const sel2 = document.getElementById('cliSelect');
-  const optsReal = (state.clients||[]).map((c,i)=>({c,i})).filter(x=>!isEmptyClient(x.c))
+  const selDay  = document.getElementById('clientSelect'); // usato in Compila giornata (clientIndex numerico)
+  const selSet  = document.getElementById('cliSelect');    // usato in Impostazioni -> Clienti (usa ID Firestore)
+
+  const real = (state.clients||[]).map((c,i)=>({c,i})).filter(x=>!isEmptyClient(x.c));
+
+  const optsDay = real
     .map(x=>'<option value="'+x.i+'">'+(x.c.ragione||('Cliente '+(x.i+1)))+'</option>').join('');
-  if(sel){ sel.innerHTML = '<option>—</option>'+optsReal; }
-  if(sel2){ sel2.innerHTML = '<option value="-1">➕ Nuovo cliente</option>' + optsReal; }
-  // robust: re-inject option if some browser strips it
-  if(sel2 && ![...sel2.options].some(o=>o.value==='-1')){
-    const o=document.createElement('option');
-    o.value='-1';
-    o.textContent='➕ Nuovo cliente';
-    sel2.insertBefore(o, sel2.firstChild);
+
+  const optsSet = real
+    .map(x=>'<option value="'+(x.c.id||x.i)+'">'+(x.c.ragione||('Cliente '+(x.i+1)))+'</option>').join('');
+
+  if(selDay){ selDay.innerHTML = '<option>—</option>' + optsDay; }
+
+  if(selSet){
+    selSet.innerHTML = '<option value="-1">➕ Nuovo cliente</option>' + optsSet;
+
+    // robust: re-inject option if some browser strips it
+    if(![...selSet.options].some(o=>o.value==='-1')){
+      const o=document.createElement('option');
+      o.value='-1';
+      o.textContent='➕ Nuovo cliente';
+      selSet.insertBefore(o, selSet.firstChild);
+    }
   }
+
   renderTarClientSelect();
 }
 
 function getSelectedClientIndex(){
   const sel = document.getElementById('cliSelect');
   if(!sel) return -1;
-  const v = parseInt(sel.value,10);
-  return isNaN(v) ? -1 : v;
+  const v = sel.value;
+  if(v === '-1') return -1;
+  // Prefer mapping by Firestore doc id (stable)
+  const idxById = (state.clients||[]).findIndex(c=>String(c.id||'') === String(v));
+  if(idxById >= 0) return idxById;
+  // Fallback legacy: numeric index
+  const i = parseInt(v,10);
+  return isNaN(i) ? -1 : i;
 }
 
 function clearClientForm(){
@@ -305,37 +321,37 @@ async function saveClientUpsert(){
   const i = getSelectedClientIndex();
   const data = readClientForm();
 
-  // blocca cliente vuoto
+  // blocca clienti vuoti
   if(isEmptyClient(data)){
-    alert('Compila almeno Ragione sociale o P.IVA (o un altro campo) prima di salvare.');
+    alert('Compila almeno Ragione sociale o P.IVA (cliente vuoto non salvabile)');
     return;
   }
 
   const col = db.collection('users').doc(state.user.uid).collection('clients');
 
-  // update cliente esistente
+  // update existing
   if(i >= 0 && state.clients?.[i]){
-    const c = state.clients[i];
-    Object.assign(c, data);
-    if(c.id){
-      await col.doc(c.id).set(data, {merge:true});
+    Object.assign(state.clients[i], data);
+    if(state.clients[i].id){
+      await col.doc(state.clients[i].id).set(data, {merge:true});
     }else{
-      // fallback: crea doc e assegna id
       const ref = await col.add(data);
-      c.id = ref.id;
+      state.clients[i].id = ref.id;
     }
     renderClients();
+    // mantieni selezione
+    const sel = document.getElementById('cliSelect');
+    if(sel && state.clients[i].id) sel.value = state.clients[i].id;
     alert('Salvataggio effettuato');
     return;
   }
 
-  // nuovo cliente
+  // create new
   const ref = await col.add(data);
   state.clients.push({id: ref.id, ...data});
   renderClients();
-
   const sel = document.getElementById('cliSelect');
-  if(sel){ sel.value = String(state.clients.length-1); }
+  if(sel) sel.value = ref.id;
   alert('Salvataggio effettuato');
 }
 
@@ -352,55 +368,38 @@ function addClient(){
   alert('Salvataggio effettuato');
 }
 async function delClient(){
-  const idx = getSelectedClientIndex();
-  if(idx < 0){
-    alert('Seleziona un cliente reale da eliminare.');
-    return;
-  }
-  const c = state.clients?.[idx];
-  if(!c){
-    alert('Cliente non valido');
-    return;
-  }
-  const name = c.ragione || ('Cliente ' + (idx+1));
-  if(!confirm('Eliminare definitivamente: ' + name + ' ?')) return;
+  const sel = document.getElementById('cliSelect');
+  if(!sel) return;
+  const v = sel.value;
+  if(v === '-1'){ alert('Seleziona un cliente da eliminare'); return; }
 
-  try{
-    if(c.id){
-      await db.collection('users').doc(state.user.uid).collection('clients').doc(c.id).delete();
-    }else{
-      // fallback: nessun id (vecchio), non posso cancellare puntuale in Firestore
-      alert('Cliente senza ID Firestore. Aggiorna salvando di nuovo il cliente e riprova.');
-      return;
-    }
-    state.clients.splice(idx,1);
-    renderClients();
-    clearClientForm();
-    const sel = document.getElementById('cliSelect');
-    if(sel) sel.value = '-1';
-    alert('Cliente eliminato');
-  }catch(e){
-    console.error('DEL CLIENT ERROR', e);
-    alert('Errore eliminazione: ' + (e.message||e.code));
+  const i = getSelectedClientIndex();
+  const c = state.clients?.[i];
+  if(!c){ alert('Cliente non trovato'); return; }
+
+  if(!confirm(`Eliminare cliente: ${c.ragione || 'Cliente'}?`)) return;
+
+  // delete from Firestore by id (stable)
+  if(c.id){
+    await db.collection('users').doc(state.user.uid).collection('clients').doc(c.id).delete();
   }
+  // update local state
+  state.clients.splice(i,1);
+  renderClients();
+  clearClientForm();
+  const sel2 = document.getElementById('cliSelect');
+  if(sel2) sel2.value = '-1';
 }
 async function saveClients(){
-  // DEPRECATED: evitare rewrite totale.
-  // Mantengo per compatibilità ma faccio solo upsert dei clienti con id.
   const col = db.collection('users').doc(state.user.uid).collection('clients');
+  const snap = await col.get();
   const batch = db.batch();
-  state.clients.forEach(c=>{
-    const data = {ragione:c.ragione||'', piva:c.piva||'', email:c.email||'', tel:c.tel||'', indirizzo:c.indirizzo||'', sdi:c.sdi||'', tariffs:c.tariffs||undefined};
-    if(c.id){
-      batch.set(col.doc(c.id), data, {merge:true});
-    }else{
-      // se non ho id, lo creo
-      const ref = col.doc();
-      c.id = ref.id;
-      batch.set(ref, data, {merge:true});
-    }
-  });
+  snap.forEach(d=>batch.delete(d.ref));
   await batch.commit();
+  const b2 = db.batch();
+  state.clients.forEach(c=> b2.set(col.doc(), c));
+  await b2.commit();
+  alert('Clienti salvati');
 }
 
 function setTime(hSel,mSel,hhmm){
@@ -517,6 +516,7 @@ function showDayDetail(v){
 
 async function saveTariffs(){
   const t = getTariffInputs();
+
   const sel = document.getElementById('tarClientSelect');
   const v = sel ? parseInt(sel.value,10) : -1;
 
@@ -526,14 +526,14 @@ async function saveTariffs(){
     await db.collection('users').doc(state.user.uid).set({tariffs: t}, {merge:true});
     alert('Tariffe globali salvate');
     return;
-  }
-
   // -2 => Senza cliente
   if(v === -2){
     state.tariffsNoClient = t;
     await db.collection('users').doc(state.user.uid).set({tariffsNoClient: t}, {merge:true});
     alert('Tariffe "Senza cliente" salvate');
     return;
+  }
+
   }
 
   // tariffe per cliente
@@ -544,17 +544,14 @@ async function saveTariffs(){
   }
   c.tariffs = t;
 
-  const col = db.collection('users').doc(state.user.uid).collection('clients');
+  // Se ho id (doc Firestore), aggiorno quel doc. Altrimenti fallback: salva tutti i clienti.
   if(c.id){
-    await col.doc(c.id).set({tariffs: t}, {merge:true});
+    await db.collection('users').doc(state.user.uid).collection('clients').doc(c.id).set({tariffs: t}, {merge:true});
     alert('Tariffe cliente salvate');
   }else{
-    // assegna id creando doc
-    const ref = await col.add({ragione:c.ragione||'', piva:c.piva||'', email:c.email||'', tel:c.tel||'', indirizzo:c.indirizzo||'', sdi:c.sdi||'', tariffs:t});
-    c.id = ref.id;
-    alert('Tariffe cliente salvate');
+    await saveClients();
+    alert('Tariffe cliente salvate (salvataggio completo)');
   }
-  renderTarClientSelect();
 }
 
 async function imgToDataURL(url){
