@@ -188,11 +188,15 @@ async function initApp(){
     cliSel.onchange = ()=>{
       const i = getSelectedClientIndex();
       if(i>=0) fillClientForm(i);
+      else clearClientForm();
     };
   }
   if((state.clients||[]).length>0){
     if(cliSel) cliSel.value = '0';
     fillClientForm(0);
+  } else {
+    if(cliSel) cliSel.value = '-1';
+    clearClientForm();
   }
 
 
@@ -229,7 +233,7 @@ function renderClients(){
   const sel2 = document.getElementById('cliSelect');
   const opts = (state.clients||[]).map((c,i)=>'<option value="'+i+'">'+(c.ragione||('Cliente '+(i+1)))+'</option>').join('');
   if(sel){ sel.innerHTML = '<option>—</option>'+opts; }
-  if(sel2){ sel2.innerHTML = opts; }
+  if(sel2){ sel2.innerHTML = '<option value="-1">➕ Nuovo cliente</option>' + opts; }
   renderTarClientSelect();
 }
 
@@ -238,6 +242,15 @@ function getSelectedClientIndex(){
   if(!sel) return -1;
   const v = parseInt(sel.value,10);
   return isNaN(v) ? -1 : v;
+}
+
+function clearClientForm(){
+  document.getElementById('cliRagione').value = '';
+  document.getElementById('cliPiva').value = '';
+  document.getElementById('cliEmail').value = '';
+  document.getElementById('cliTel').value = '';
+  document.getElementById('cliIndirizzo').value = '';
+  document.getElementById('cliSdi').value = '';
 }
 
 function fillClientForm(i){
